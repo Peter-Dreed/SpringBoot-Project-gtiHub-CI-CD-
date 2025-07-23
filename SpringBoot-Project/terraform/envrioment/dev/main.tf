@@ -14,3 +14,18 @@ module "compute" {
   vpc_id           = module.network.vpc_id
   user_data  = file("${path.module}/user_data.sh")
 }
+
+provider "docker" {}
+
+resource "docker_image" "springboot" {
+  name = "${var.dockerhub_username}/springboot-demo"
+}
+
+resource "docker_container" "springboot_container" {
+  image = docker_image.springboot.latest
+  name  = "springboot_container"
+  ports {
+    internal = 8081
+    external = 8081
+  }
+}
