@@ -40,4 +40,8 @@ variable "key_name" {
 }
 
 
-
+variable "dockerhub_username" {
+  type             =string
+  default          ="gomapeter"
+  description      ="Docker Hub Username"
+}
