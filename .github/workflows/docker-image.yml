@@ -1,5 +1,4 @@
 name: Build and Deploy Spring Boot Application
-
 on:
   push:
     branches:
@@ -10,44 +9,56 @@ jobs:
   build_app:
     name: Build Spring Boot App
     runs-on: self-hosted
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
-
+        
       - name: Show Files
         run: |
           echo "Showing repo root..."
           ls -la
           echo "Showing spring-boot-demo..."
           ls -la spring-boot-demo || echo "spring-boot-demo directory not found!"
-
+          
       - name: Set up Java 17
         uses: actions/setup-java@v3
         with:
           java-version: '17'
           distribution: 'temurin'
-
+          
+      - name: Setup Maven
+        uses: stCarolas/setup-maven@v4.5
+        with:
+          maven-version: 3.9.4
+          
+      - name: Verify Maven Installation
+        run: |
+          mvn --version
+          java -version
+          
       - name: Build Spring Boot App
         working-directory: spring-boot-demo
         run: mvn clean package -DskipTests
+        
+      - name: List Target Directory
+        working-directory: spring-boot-demo
+        run: ls -la target/
 
   dockerize:
     name: Build and Push Docker Image
     needs: build_app
     runs-on: self-hosted
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
-
+        
       - name: Docker Login
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-
+        
       - name: Build Docker Image
         working-directory: spring-boot-demo
         run: docker build -t ${{ secrets.DOCKER_USERNAME }}/springboot-demo .
-
+        
       - name: Push Docker Image
         run: docker push ${{ secrets.DOCKER_USERNAME }}/springboot-demo
 
@@ -55,16 +66,18 @@ jobs:
     name: Deploy to Self-Hosted
     needs: dockerize
     runs-on: self-hosted
-
     steps:
       - name: Docker Login
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-
+        
       - name: Stop and Remove Old Container
         run: |
           docker stop springboot_container || true
           docker rm springboot_container || true
-
+          
+      - name: Pull Latest Image
+        run: docker pull ${{ secrets.DOCKER_USERNAME }}/springboot-demo
+        
       - name: Run Updated Container
         run: |
           docker run -d \
