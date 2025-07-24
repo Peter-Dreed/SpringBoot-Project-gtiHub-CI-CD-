@@ -3,7 +3,7 @@ name: Full Self-Hosted Terraform CI/CD
 on:
   push:
     paths:
-      - 'spring-boot-demo'
+      - 'spring-boot-demo/**'
   workflow_dispatch:
     inputs:
       action:
@@ -47,17 +47,19 @@ jobs:
       working-directory: ./terraform/environment/dev
       run: terraform init
 
-    - name: 🔧 Terraform Action (Apply or Destroy)
+    - name: 🔍 Terraform Plan & Apply or Destroy
       working-directory: ./terraform/environment/dev
       run: |
         ACTION="${{ github.event.inputs.action || 'apply' }}"
 
         if [[ "$ACTION" == "apply" ]]; then
-          echo " Taint container to force recreation"
+          echo "💠 Taint container to force recreation (if exists)..."
           terraform taint docker_container.springboot_container || true
-          echo " Applying Terraform configuration..."
-          terraform apply -auto-approve
+          echo "🧠 Planning infrastructure..."
+          terraform plan -out=tfplan
+          echo "🚀 Applying plan..."
+          terraform apply -auto-approve tfplan
         else
-          echo " Destroying infrastructure..."
+          echo "💣 Destroying infrastructure..."
           terraform destroy -auto-approve
         fi
