@@ -7,13 +7,13 @@ on:
   workflow_dispatch:
 
 jobs:
-  build_app:
-    name:    Build Spring Boot App
-    runs-on: self-hosted
-
-    steps:
-    - name:    Checkout Code
+   steps:
+    - name:  Checkout Code
       uses: actions/checkout@v3
+
+    - name:  Build App
+      working-directory: ./spring-boot-demo
+      run: mvn clean package -DskipTests
 
     - name:    Set up Java 17
       uses: actions/setup-java@v3
