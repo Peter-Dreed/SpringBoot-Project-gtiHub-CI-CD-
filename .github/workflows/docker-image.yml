@@ -15,12 +15,12 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Confirm folder exists
+      - name: Confirm folders
         run: |
           echo "Repo root:"
           ls -la
-          echo "Spring Boot folder:"
-          ls -la SpringBoot-Project
+          echo "Spring Boot project:"
+          ls -la SpringBoot-Project/spring-boot-demo
 
       - name: Set up Java 17
         uses: actions/setup-java@v3
@@ -29,11 +29,11 @@ jobs:
           distribution: 'temurin'
 
       - name: Build with Maven
-        working-directory: SpringBoot-Project
+        working-directory: SpringBoot-Project/spring-boot-demo
         run: mvn clean package -DskipTests
 
   dockerize:
-    name: Dockerize and Push
+    name: Build and Push Docker Image
     needs: build_app
     runs-on: self-hosted
 
@@ -45,14 +45,14 @@ jobs:
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
       - name: Build Docker Image
-        working-directory: SpringBoot-Project
+        working-directory: SpringBoot-Project/spring-boot-demo
         run: docker build -t ${{ secrets.DOCKER_USERNAME }}/springboot-demo .
 
       - name: Push Docker Image
         run: docker push ${{ secrets.DOCKER_USERNAME }}/springboot-demo
 
   deploy:
-    name: Deploy on Server
+    name: Deploy to Server
     needs: dockerize
     runs-on: self-hosted
 
@@ -60,7 +60,7 @@ jobs:
       - name: Docker Login
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-      - name: Stop and Remove Old Container
+      - name: Stop and Remove Existing Container
         run: |
           docker stop springboot_container || true
           docker rm springboot_container || true
