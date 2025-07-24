@@ -1,4 +1,4 @@
-name: Modular Self-Hosted Deploy Pipeline
+name: Modular Self-Hosted Build & Deploy
 
 on:
   push:
@@ -7,60 +7,67 @@ on:
   workflow_dispatch:
 
 jobs:
-   steps:
-    - name:  Checkout Code
-      uses: actions/checkout@v3
+  build_app:
+    name: 🧱 Build Spring Boot App
+    runs-on: self-hosted
 
-    - name:  Build App
-      working-directory: ./spring-boot-demo
-      run: mvn clean package -DskipTests
+    steps:
+      - name: 🔄 Checkout Code
+        uses: actions/checkout@v3
 
-    - name:    Set up Java 17
-      uses: actions/setup-java@v3
-      with:
-        java-version: '17'
-        distribution: 'temurin'
+      - name: 📂 Debug: Show Files
+        run: |
+          echo "Showing repo root..."
+          ls -la
+          echo "Showing spring-boot-demo..."
+          ls -la spring-boot-demo || echo "❌ spring-boot-demo directory not found!"
 
-    - name:    Build App
-      working-directory: ./spring-boot-demo
-      run: mvn clean package -DskipTests
+      - name: ☕ Set up Java 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: 🔨 Build Spring Boot App
+        working-directory: spring-boot-demo
+        run: mvn clean package -DskipTests
 
   dockerize:
-    name:    Build & Push Docker Image
+    name: 🐳 Build & Push Docker Image
     needs: build_app
     runs-on: self-hosted
 
     steps:
-    - name:    Checkout Code
-      uses: actions/checkout@v3
+      - name: 🔄 Checkout Code
+        uses: actions/checkout@v3
 
-    - name:    Docker Login
-      run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+      - name: 🔐 Docker Login
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-    - name:    Build Docker Image
-      working-directory: ./spring-boot-demo
-      run: docker build -t ${{ secrets.DOCKER_USERNAME }}/springboot-demo .
+      - name: 🐳 Build Docker Image
+        working-directory: spring-boot-demo
+        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/springboot-demo .
 
-    - name:    Push Docker Image
-      run: docker push ${{ secrets.DOCKER_USERNAME }}/springboot-demo
+      - name: 🚀 Push Docker Image
+        run: docker push ${{ secrets.DOCKER_USERNAME }}/springboot-demo
 
   deploy:
-    name:  Deploy to Self-Hosted Server
+    name: 🚀 Deploy to Self-Hosted
     needs: dockerize
     runs-on: self-hosted
 
     steps:
-    - name:  Docker Login
-      run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+      - name: 🔐 Docker Login
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-    - name:  Stop & Remove Old Container
-      run: |
-        docker stop springboot_container || true
-        docker rm springboot_container || true
+      - name: 🧼 Stop & Remove Old Container
+        run: |
+          docker stop springboot_container || true
+          docker rm springboot_container || true
 
-    - name:  Run Updated Container
-      run: |
-        docker run -d \
-          --name springboot_container \
-          -p 8081:8081 \
-          ${{ secrets.DOCKER_USERNAME }}/springboot-demo
+      - name: 🏃 Run Updated Container
+        run: |
+          docker run -d \
+            --name springboot_container \
+            -p 8081:8081 \
+            ${{ secrets.DOCKER_USERNAME }}/springboot-demo
