@@ -13,6 +13,6 @@ public class HelloController {
 
     @GetMapping("/hello")
     public String hello() {
-        return "👋 Hello from Dockerized Spring Boot!";
+        return "👋 Hello from ci/cd Dockerized Spring Boot!";
     }
 }
