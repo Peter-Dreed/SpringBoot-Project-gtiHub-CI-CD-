@@ -1,22 +1,14 @@
-name: Full Self-Hosted Terraform CI/CD
+name: Modular Self-Hosted Deploy Pipeline
 
 on:
   push:
-    paths:
-      - 'spring-boot-demo/**'
+    branches:
+      - main
   workflow_dispatch:
-    inputs:
-      action:
-        description: "Select Terraform action (only applies when manually triggered)"
-        required: true
-        default: "apply"
-        type: choice
-        options:
-          - apply
-          - destroy
 
 jobs:
-  ci-cd:
+  build_app:
+    name: 🧱 Build Spring Boot App
     runs-on: self-hosted
 
     steps:
@@ -29,9 +21,18 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: 🔨 Build Spring Boot App
+    - name: 🧪 Build App
       working-directory: ./spring-boot-demo
       run: mvn clean package -DskipTests
+
+  dockerize:
+    name: 🐳 Build & Push Docker Image
+    needs: build_app
+    runs-on: self-hosted
+
+    steps:
+    - name: 🔄 Checkout Code
+      uses: actions/checkout@v3
 
     - name: 🔐 Docker Login
       run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
@@ -43,23 +44,23 @@ jobs:
     - name: 🚀 Push Docker Image
       run: docker push ${{ secrets.DOCKER_USERNAME }}/springboot-demo
 
-    - name: 📦 Terraform Init
-      working-directory: ./terraform/environment/dev
-      run: terraform init
+  deploy:
+    name: 🚀 Deploy to Self-Hosted Server
+    needs: dockerize
+    runs-on: self-hosted
 
-    - name: 🔍 Terraform Plan & Apply or Destroy
-      working-directory: ./terraform/environment/dev
+    steps:
+    - name: 🔐 Docker Login
+      run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+    - name: 🧼 Stop & Remove Old Container
       run: |
-        ACTION="${{ github.event.inputs.action || 'apply' }}"
+        docker stop springboot_container || true
+        docker rm springboot_container || true
 
-        if [[ "$ACTION" == "apply" ]]; then
-          echo "💠 Taint container to force recreation (if exists)..."
-          terraform taint docker_container.springboot_container || true
-          echo "🧠 Planning infrastructure..."
-          terraform plan -out=tfplan
-          echo "🚀 Applying plan..."
-          terraform apply -auto-approve tfplan
-        else
-          echo "💣 Destroying infrastructure..."
-          terraform destroy -auto-approve
-        fi
+    - name: 🏃 Run Updated Container
+      run: |
+        docker run -d \
+          --name springboot_container \
+          -p 8081:8081 \
+          ${{ secrets.DOCKER_USERNAME }}/springboot-demo
