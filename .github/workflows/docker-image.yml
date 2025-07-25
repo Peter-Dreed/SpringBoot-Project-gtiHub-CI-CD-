@@ -67,12 +67,15 @@ jobs:
         run: |
           ssh ${{ secrets.HOST_USERNAME }}@${{ secrets.HOST_ADDRESS }} <<EOF
 
-            # Install Nginx if not present
+            # Ensure Docker is running
+            sudo systemctl start docker
+
+            # Install Nginx if missing
             if ! command -v nginx > /dev/null; then
               sudo apt update && sudo apt install -y nginx
             fi
 
-            # Create Nginx reverse proxy config
+            # Write Nginx reverse proxy config
             sudo tee /etc/nginx/sites-available/springboot <<'NGINX'
             server {
                 listen 80;
@@ -89,11 +92,11 @@ jobs:
             }
             NGINX
 
-            # Enable the config
+            # Enable config
             sudo ln -sf /etc/nginx/sites-available/springboot /etc/nginx/sites-enabled/default
             sudo nginx -t && sudo systemctl restart nginx
 
-            # Deploy Docker container
+            # Pull and run Docker container
             docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
             docker stop springboot_container || true
             docker rm springboot_container || true
