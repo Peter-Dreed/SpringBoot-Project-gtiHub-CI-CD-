@@ -61,33 +61,33 @@ jobs:
         run: |
           ssh ${{ secrets.HOST_USERNAME }}@${{ secrets.HOST_ADDRESS }} <<'EOF'
 
-            echo "Stopping any running container..."
+            echo "Stopping any existing container..."
             docker stop springboot_container || true
             docker rm springboot_container || true
 
-            echo "Pulling latest image..."
+            echo "Logging into Docker Hub and pulling image..."
             docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
             docker pull ${{ secrets.DOCKER_USERNAME }}/springboot-demo
 
-            echo "Starting new container..."
+            echo "Running new Spring Boot container..."
             docker run -d \
               --name springboot_container \
               -p 8081:8081 \
               ${{ secrets.DOCKER_USERNAME }}/springboot-demo
 
-            echo "Waiting for Spring Boot app to start..."
+            echo "Waiting for application to start..."
             sleep 10
 
-            echo "Checking app status..."
-            if curl -s --head http://localhost:8081 | grep "200 OK" > /dev/null; then
-              echo "App is up"
+            echo "Verifying app is up..."
+            if curl --fail --silent http://localhost:8081 > /dev/null; then
+              echo "Spring Boot app is healthy."
             else
-              echo "App failed to start or is not healthy"
+              echo "Spring Boot app failed health check."
               docker logs springboot_container
               exit 1
             fi
 
-            echo "Restarting Nginx..."
+            echo "Restarting Nginx to ensure proxy is live..."
             sudo systemctl restart nginx
 
           EOF
