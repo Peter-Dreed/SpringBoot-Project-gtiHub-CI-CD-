@@ -15,12 +15,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Confirm Spring Boot Folder
-        run: |
-          echo "Checking project layout..."
-          ls -la
-          ls -la SpringBoot-Project/spring-boot-demo
-
       - name: Set up Java 17
         uses: actions/setup-java@v3
         with:
@@ -51,7 +45,7 @@ jobs:
         run: docker push ${{ secrets.DOCKER_USERNAME }}/springboot-demo
 
   deploy_to_ec2:
-    name: Deploy to EC2 with Nginx
+    name: Deploy to EC2 and Restart Spring Boot App
     needs: dockerize
     runs-on: ubuntu-latest
 
@@ -63,47 +57,37 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.HOST_ADDRESS }} >> ~/.ssh/known_hosts
 
-      - name: Deploy Container and Configure Nginx
+      - name: SSH and Deploy Spring Boot Container
         run: |
-          ssh ${{ secrets.HOST_USERNAME }}@${{ secrets.HOST_ADDRESS }} <<EOF
+          ssh ${{ secrets.HOST_USERNAME }}@${{ secrets.HOST_ADDRESS }} <<'EOF'
 
-            # Ensure Docker is running
-            sudo systemctl start docker
-
-            # Install Nginx if missing
-            if ! command -v nginx > /dev/null; then
-              sudo apt update && sudo apt install -y nginx
-            fi
-
-            # Write Nginx reverse proxy config
-            sudo tee /etc/nginx/sites-available/springboot <<'NGINX'
-            server {
-                listen 80;
-                server_name _;
-
-                location / {
-                    proxy_pass         http://localhost:8081/;
-                    proxy_http_version 1.1;
-                    proxy_set_header   Host \$host;
-                    proxy_set_header   X-Real-IP \$remote_addr;
-                    proxy_set_header   X-Forwarded-For \$proxy_add_x_forwarded_for;
-                    proxy_set_header   X-Forwarded-Proto \$scheme;
-                }
-            }
-            NGINX
-
-            # Enable config
-            sudo ln -sf /etc/nginx/sites-available/springboot /etc/nginx/sites-enabled/default
-            sudo nginx -t && sudo systemctl restart nginx
-
-            # Pull and run Docker container
-            docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
+            echo "Stopping any running container..."
             docker stop springboot_container || true
             docker rm springboot_container || true
+
+            echo "Pulling latest image..."
+            docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
             docker pull ${{ secrets.DOCKER_USERNAME }}/springboot-demo
+
+            echo "Starting new container..."
             docker run -d \
               --name springboot_container \
               -p 8081:8081 \
               ${{ secrets.DOCKER_USERNAME }}/springboot-demo
+
+            echo "Waiting for Spring Boot app to start..."
+            sleep 10
+
+            echo "Checking app status..."
+            if curl -s --head http://localhost:8081 | grep "200 OK" > /dev/null; then
+              echo "App is up"
+            else
+              echo "App failed to start or is not healthy"
+              docker logs springboot_container
+              exit 1
+            fi
+
+            echo "Restarting Nginx..."
+            sudo systemctl restart nginx
 
           EOF
