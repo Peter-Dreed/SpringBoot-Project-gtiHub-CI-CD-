@@ -15,11 +15,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Confirm folders
+      - name: Confirm Spring Boot Folder
         run: |
-          echo "Repo root:"
+          echo "Checking project layout..."
           ls -la
-          echo "Spring Boot project:"
           ls -la SpringBoot-Project/spring-boot-demo
 
       - name: Set up Java 17
@@ -51,23 +50,57 @@ jobs:
       - name: Push Docker Image
         run: docker push ${{ secrets.DOCKER_USERNAME }}/springboot-demo
 
-  deploy:
-    name: Deploy to Server
+  deploy_to_ec2:
+    name: Deploy to EC2 with Nginx
     needs: dockerize
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Docker Login
-        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-
-      - name: Stop and Remove Existing Container
+      - name: Set up SSH key
         run: |
-          docker stop springboot_container || true
-          docker rm springboot_container || true
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.HOST_ADDRESS }} >> ~/.ssh/known_hosts
 
-      - name: Run New Container
+      - name: Deploy Container and Configure Nginx
         run: |
-          docker run -d \
-            --name springboot_container \
-            -p 8081:8081 \
-            ${{ secrets.DOCKER_USERNAME }}/springboot-demo
+          ssh ${{ secrets.HOST_USERNAME }}@${{ secrets.HOST_ADDRESS }} <<EOF
+
+            # Install Nginx if not present
+            if ! command -v nginx > /dev/null; then
+              sudo apt update && sudo apt install -y nginx
+            fi
+
+            # Create Nginx reverse proxy config
+            sudo tee /etc/nginx/sites-available/springboot <<'NGINX'
+            server {
+                listen 80;
+                server_name _;
+
+                location / {
+                    proxy_pass         http://localhost:8081/;
+                    proxy_http_version 1.1;
+                    proxy_set_header   Host \$host;
+                    proxy_set_header   X-Real-IP \$remote_addr;
+                    proxy_set_header   X-Forwarded-For \$proxy_add_x_forwarded_for;
+                    proxy_set_header   X-Forwarded-Proto \$scheme;
+                }
+            }
+            NGINX
+
+            # Enable the config
+            sudo ln -sf /etc/nginx/sites-available/springboot /etc/nginx/sites-enabled/default
+            sudo nginx -t && sudo systemctl restart nginx
+
+            # Deploy Docker container
+            docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
+            docker stop springboot_container || true
+            docker rm springboot_container || true
+            docker pull ${{ secrets.DOCKER_USERNAME }}/springboot-demo
+            docker run -d \
+              --name springboot_container \
+              -p 8081:8081 \
+              ${{ secrets.DOCKER_USERNAME }}/springboot-demo
+
+          EOF
